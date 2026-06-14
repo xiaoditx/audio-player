@@ -2,11 +2,13 @@
 
 ## 项目未完工！！！
 
-Yumo Audio是利用WIN32 API实现的C++音频播放库，主要聚焦于音频混合等基础API无法满足的功能
+Yumo Audio是利用WIN32 API实现的C++音频播放库，主要聚焦于音频混合等基础API无法满足的功能，属于自用型库，完全服务于[keyBonk](https://github.com/xiaoditx/keyBonk)所以有一些通用功能将不予考虑
 
-Yumo Audio的目标是轻量而非全能，因此有时会抛弃一些成熟的库应考虑的功能。
+由于上文提到的自用特性，本库结构异常混乱，不支持CMake构建，部分文件缺失需要手动补齐，因此暂不建议直接使用。如果必须使用，请自行改造本库。
 
 本项目依赖于[libsamplerate](https://github.com/libsndfile/libsamplerate/tree/master)库，用于音频重采样。请确保在编译时链接该库。（我给写进gitignore了所以你可能得自己去下载最新的release）
+
+本库80%的部分为vibe coding产物，其中的60%未经审查，请谨慎使用。
 
 ## 一. 兼容性
 
