@@ -2,6 +2,12 @@
 #include <mmreg.h>
 #include <stdio.h>
 #include <memory>
+#include <vector>
+#include <cstdint>
+#include <algorithm>
+
+// libsamplerate 库
+#include "libsamplerate/include/samplerate.h"
 
 namespace yumo
 {
@@ -25,6 +31,24 @@ namespace yumo
         DWORD dataSize;                  // PCM数据的大小（字节数）
         bool valid = false;              // 是否成功加载并解析WAV文件
     };
+
+    typedef std::vector<int16_t> StandardWavInfo;
+
+    /**
+     * @brief 将WAV文件信息转换为标准格式
+     *
+     * @param[in] wavInfo 包含WAV文件格式信息和音频数据的结构体
+     * @return StandardWavInfo 标准格式的WAV文件信息，包含16位整数音频数据
+     *
+     */
+    StandardWavInfo convertToStandard(const WavInfo &wavInfo);
+
+    /**
+     * @brief 使用 waveOut API 播放标准格式音频
+     *
+     * @param[in] audioData 标准格式音频数据（44.1kHz, 双声道, 16位）
+     */
+    void playStandard(const StandardWavInfo &audioData);
 
     /**
      * @brief 从磁盘加载WAV文件，解析其格式块和数据块，填充WavInfo结构体
