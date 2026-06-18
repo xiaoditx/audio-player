@@ -114,6 +114,10 @@ namespace yumo
         std::vector<AudioItem> audioItems_;  // 音频池
         mutable std::mutex mutex_;           // 线程安全锁
         bool isPlaying_ = false;             // 是否正在播放
+        HWAVEOUT hWaveOut_ = nullptr;        // 音频设备句柄
+
+        // 双缓冲常量
+        static const size_t BUFFER_COUNT = 2; // 缓冲区数量
 
         // 混合音频回调函数
         static void CALLBACK waveOutCallback(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);

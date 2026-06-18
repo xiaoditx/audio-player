@@ -59,7 +59,8 @@ namespace
 namespace yumo
 {
     // 音频缓冲区大小（约100ms的音频）
-    const size_t AUDIO_CHUNK_SIZE = 44100 * 2 * 2 * 0.1; // 采样率 * 声道 * 字节 * 时长(秒)
+    // 计算：采样率 * 声道数 * 时长(秒) = 44100 * 2 * 0.1 = 8820 个样本
+    const size_t AUDIO_CHUNK_SIZE = static_cast<size_t>(44100 * 2 * 0.1);
 
     // AudioPool 单例实现
     AudioPool& AudioPool::getInstance()
@@ -152,10 +153,18 @@ namespace yumo
         if (!pPool || !pHeader)
             return;
 
+        // 先释放已播放完的缓冲区
+        waveOutUnprepareHeader(hwo, pHeader, sizeof(WAVEHDR));
+        delete[] pHeader->lpData;
+        delete pHeader;
+
         // 检查是否所有音频都播放完毕
         bool allFinished = true;
         {
             std::lock_guard<std::mutex> lock(pPool->mutex_);
+            if (!pPool->isPlaying_) {
+                return; // 已停止播放
+            }
             for (const auto& item : pPool->audioItems_) {
                 if (item.active && item.position < item.data.size()) {
                     allFinished = false;
@@ -165,11 +174,11 @@ namespace yumo
         }
 
         if (allFinished) {
-            waveOutUnprepareHeader(hwo, pHeader, sizeof(WAVEHDR));
-            delete[] pHeader->lpData;
-            delete pHeader;
-            waveOutClose(hwo);
+            // 所有音频播放完毕，关闭设备
+            std::lock_guard<std::mutex> lock(pPool->mutex_);
             pPool->isPlaying_ = false;
+            waveOutClose(hwo);
+            pPool->hWaveOut_ = nullptr;
             return;
         }
 
@@ -184,11 +193,6 @@ namespace yumo
 
         waveOutPrepareHeader(hwo, pNewHeader, sizeof(WAVEHDR));
         waveOutWrite(hwo, pNewHeader, sizeof(WAVEHDR));
-
-        // 释放旧缓冲区
-        waveOutUnprepareHeader(hwo, pHeader, sizeof(WAVEHDR));
-        delete[] pHeader->lpData;
-        delete pHeader;
     }
 
     // 开始播放所有音频（混合播放）
@@ -201,6 +205,11 @@ namespace yumo
 
         if (audioItems_.empty())
             return;
+
+        // 重置播放位置
+        for (auto& item : audioItems_) {
+            item.position = 0;
+        }
 
         // 设置播放格式：44.1kHz, 双声道, 16位
         WAVEFORMATEX wf = {};
@@ -224,30 +233,41 @@ namespace yumo
             throw yumo::exception_ex(yumo::exception::type::UnknownError, L"波形音频设备打开失败");
         }
 
-        // 重新锁定
+        // 保存设备句柄
         lock.lock();
+        hWaveOut_ = hWaveOut;
         isPlaying_ = true;
-
-        // 准备第一个音频块（mixAudioChunk 内部会锁定，所以这里先解锁）
         lock.unlock();
-        
-        int16_t* pData = new int16_t[AUDIO_CHUNK_SIZE];
-        mixAudioChunk(pData, AUDIO_CHUNK_SIZE);
 
-        WAVEHDR* pHeader = new WAVEHDR;
-        memset(pHeader, 0, sizeof(WAVEHDR));
-        pHeader->lpData = reinterpret_cast<LPSTR>(pData);
-        pHeader->dwBufferLength = static_cast<DWORD>(AUDIO_CHUNK_SIZE * sizeof(int16_t));
+        // 预先准备多个缓冲区（双缓冲）
+        for (size_t i = 0; i < BUFFER_COUNT; ++i) {
+            int16_t* pData = new int16_t[AUDIO_CHUNK_SIZE];
+            mixAudioChunk(pData, AUDIO_CHUNK_SIZE);
 
-        waveOutPrepareHeader(hWaveOut, pHeader, sizeof(WAVEHDR));
-        waveOutWrite(hWaveOut, pHeader, sizeof(WAVEHDR));
+            WAVEHDR* pHeader = new WAVEHDR;
+            memset(pHeader, 0, sizeof(WAVEHDR));
+            pHeader->lpData = reinterpret_cast<LPSTR>(pData);
+            pHeader->dwBufferLength = static_cast<DWORD>(AUDIO_CHUNK_SIZE * sizeof(int16_t));
+
+            waveOutPrepareHeader(hWaveOut, pHeader, sizeof(WAVEHDR));
+            waveOutWrite(hWaveOut, pHeader, sizeof(WAVEHDR));
+        }
     }
 
     // 停止播放
     void AudioPool::stop()
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!isPlaying_)
+            return;
+        
         isPlaying_ = false;
+        
+        if (hWaveOut_) {
+            waveOutReset(hWaveOut_);  // 停止播放并标记所有缓冲区为已完成
+            waveOutClose(hWaveOut_);
+            hWaveOut_ = nullptr;
+        }
     }
 
     // 重置所有音频的播放位置到开头
