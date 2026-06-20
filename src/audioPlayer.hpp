@@ -122,12 +122,26 @@ namespace yumo
         bool isPlaying(size_t instanceId) const;
 
         /**
-         * @brief 停止所有播放（静音）
+         * @brief 停止所有播放（挂起）
          * 
-         * 重置所有播放实例的位置到开头，并静音
-         * 设备保持打开状态，后续 addAudio 会继续播放
+         * 挂起播放，不处理数据，等待恢复
+         * 调用 resume() 可恢复播放
          */
         void stopAll();
+
+        /**
+         * @brief 恢复播放
+         * 
+         * 取消停止和静音状态，继续播放
+         */
+        void resume();
+
+        /**
+         * @brief 设置静音状态
+         * 
+         * @param muted true=静音，false=取消静音
+         */
+        void setMuted(bool muted);
 
         /**
          * @brief 重置所有播放实例的位置到开头
@@ -159,7 +173,8 @@ namespace yumo
         std::vector<PlayInstance> playInstances_;      // 当前播放的实例（独立位置追踪）
         mutable std::mutex mutex_;                     // 线程安全锁
         bool isPlaying_ = false;                        // 是否正在播放
-        bool isMuted_ = false;                         // 是否静音
+        bool isMuted_ = false;                         // 是否静音（继续播放但跳过mix）
+        bool isStopped_ = false;                       // 是否停止（挂起播放，不处理数据）
         HWAVEOUT hWaveOut_ = nullptr;                  // 音频设备句柄
 
         // 双缓冲常量
@@ -183,13 +198,6 @@ namespace yumo
      *
      */
     StandardWavInfo convertToStandard(const WavInfo &wavInfo);
-
-    /**
-     * @brief 使用 waveOut API 播放标准格式音频
-     *
-     * @param[in] audioData 标准格式音频数据（44.1kHz, 双声道, 16位）
-     */
-    void playStandard(const StandardWavInfo &audioData);
 
     /**
      * @brief 从磁盘加载WAV文件，解析其格式块和数据块，填充WavInfo结构体

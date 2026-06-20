@@ -4,6 +4,7 @@
 #include <io.h>
 #include <fcntl.h>
 #include <string>
+#include <atomic>
 
 void testAudioFile(const wchar_t* filename)
 {
@@ -11,38 +12,35 @@ void testAudioFile(const wchar_t* filename)
     {
         std::wcout << L"\n=== 测试文件: " << filename << L" ===" << std::endl;
         
-        // 加载WAV文件
-        yumo::WavInfo info;
-        std::wcout << L"正在加载WAV文件..." << std::endl;
-        yumo::loadWav(filename, &info);
+        // 获取音频池单例
+        yumo::AudioPool& pool = yumo::AudioPool::getInstance();
         
-        if (info.valid)
-        {
-            std::wcout << L"WAV文件加载成功！" << std::endl;
-            std::wcout << L"原始格式:" << std::endl;
-            std::wcout << L"  采样率: " << info.wf.nSamplesPerSec << L" Hz" << std::endl;
-            std::wcout << L"  声道数: " << info.wf.nChannels << std::endl;
-            std::wcout << L"  位深度: " << info.wf.wBitsPerSample << L" bits" << std::endl;
-            std::wcout << L"  PCM数据大小: " << info.dataSize << L" bytes" << std::endl;
+        // 预加载音频
+        std::wcout << L"正在预加载音频..." << std::endl;
+        std::atomic<bool> ready(false);
+        size_t preloadedId = pool.preloadAudio(filename, ready);
+        
+        // 等待加载完成
+        while (!ready.load()) {
+            Sleep(10);
         }
-        else
-        {
-            std::wcout << L"WAV文件加载失败！" << std::endl;
-            return;
-        }
+        std::wcout << L"预加载完成！ID: " << preloadedId << std::endl;
         
-        // 转换为标准格式
-        std::wcout << L"\n正在转换为标准格式(44.1kHz, 双声道, 16位)..." << std::endl;
-        yumo::StandardWavInfo standard = yumo::convertToStandard(info);
-        std::wcout << L"转换完成！" << std::endl;
-        std::wcout << L"标准格式数据大小: " << standard.size() * sizeof(int16_t) << L" bytes" << std::endl;
-        
-        // 播放音频
+        // 添加到播放队列
         std::wcout << L"\n按 Enter 键播放音频...";
         std::wcin.get();
-        std::wcout << L"正在播放..." << std::endl;
-        yumo::playStandard(standard);
-        std::wcout << L"播放完成！" << std::endl;
+        
+        size_t instanceId = pool.addAudio(preloadedId);
+        pool.setMuted(false); // 取消静音开始播放
+        
+        std::wcout << L"正在播放... 播放实例ID: " << instanceId << std::endl;
+        
+        // 等待播放完成
+        std::wcout << L"按 Enter 键停止...";
+        std::wcin.get();
+        
+        pool.stopAll();
+        std::wcout << L"播放已停止！" << std::endl;
         
     }
     catch (const yumo::exception_ex& e)
@@ -62,9 +60,9 @@ int main()
     
     // 测试三个音频文件
     const wchar_t* files[] = {
-        L"../audio/test.wav",
-        L"../audio/test2.wav", 
-        L"../audio/test3.wav"
+        L"c:\\小狄\\audio-player\\test\\audio\\test.wav",
+        L"c:\\小狄\\audio-player\\test\\audio\\test2.wav", 
+        L"c:\\小狄\\audio-player\\test\\audio\\test3.wav"
     };
     
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i)
@@ -73,8 +71,6 @@ int main()
     }
     
     std::wcout << L"\n=== 测试完成 ===" << std::endl;
-    std::wcout << L"按 Enter 键退出...";
-    std::wcin.get();
     
     return 0;
 }
