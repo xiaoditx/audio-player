@@ -1,6 +1,213 @@
-依赖库：libsamplerate  
-路径：./src/libsamplerate  
+# Yumo Audio 音频混合播放库
+
+## 项目概述
+
+这是一个轻量级的 Windows 音频混合播放库，用于解决 Win32 `waveOut` 系列 API 的冲突问题。
+
+### 核心定位
+
+- **不同时播放**：解决原生 API 同一时间只能播放一个音频的问题
+- **灵活控制**：支持预加载、动态添加播放、静音控制等
+- **混合播放**：多个音频可以同时播放并混合
+
+### 设计目标
+
+- `addAudio` 添加音频后立即播放
+- 提供 `preloadAudio` 接口允许预先加载标准音频对象
+- 支持 `stopAll` 静音功能
+- 允许同一音频的重复播放（通过播放实例追踪独立位置）
+
+## 依赖库
+
+| 库 | 路径 | 说明 |
+|----|------|------|
+| libsamplerate | `src/libsamplerate` | 音频重采样库 |
+
+### 编译命令
+
+```powershell
+g++ -std=c++17 -I"src" -I"src/libsamplerate/include" -o output.exe source.cpp src/audioPlayer.cpp -L"src/libsamplerate/lib" -lsamplerate -lwinmm
+```
+
+### 编译中间产物
+
+编译过程中生成的中间文件应放置在以下被 `.gitignore` 忽略的路径：
+
+| 文件类型 | 存放路径 | 说明 |
+|----------|----------|------|
+| `.def` 导出定义文件 | `src/libsamplerate/lib/` | 从 DLL 提取导出符号 |
+| `.a` MinGW 导入库 | `src/libsamplerate/lib/` | MinGW/G++ 链接用 |
+| `.exe` 测试可执行文件 | `test/compiled/` | 测试程序输出 |
+| `.dll` 运行时依赖 | `test/compiled/` | 测试运行时需要的 DLL ，注意复制前请先检测一下`test/compiled/`下是否已经存在，已经存在的话之后都不再复制 |
+
+**不要将中间产物放在项目根目录**，以免污染源码仓库。
+
+#### MinGW 导入库生成（首次编译）
+
+如果 libsamplerate 只提供了 MSVC 格式的 `.lib` 文件，需要为 MinGW 生成兼容的导入库：
+
+```powershell
+# 1. 从 DLL 生成导出定义文件
+cd src/libsamplerate/bin
+gendef samplerate.dll
+
+# 2. 从 .def 生成 MinGW 导入库
+dlltool -d samplerate.def -D samplerate.dll -l ../lib/libsamplerate_mingw.a
+```
 
 ### 测试文件编译
 
-测试文件编译至：./test/compiled，文件夹包含依赖库的dll文件无需额外复制
+测试文件编译至：`./test/compiled/`
+
+文件夹已包含依赖库的 DLL 文件，测试时无需额外复制。
+
+## API 接口
+
+### 核心接口
+
+| 接口 | 说明 |
+|------|------|
+| `AudioPool::getInstance()` | 获取单例实例 |
+| `preloadAudio(filename, ready)` | 异步预加载音频文件 |
+| `addAudio(preloadedId)` | 添加预加载音频并立即播放 |
+| `addAudio(filename)` | 简化用法：异步加载并播放 |
+| `stopAll()` | 静音所有播放 |
+
+### 查询接口
+
+| 接口 | 说明 |
+|------|------|
+| `getPreloadedCount()` | 获取预加载音频数量 |
+| `getPlayingCount()` | 获取当前播放实例数量 |
+| `isPlaying(instanceId)` | 检查播放实例是否正在播放 |
+
+### 控制接口
+
+| 接口 | 说明 |
+|------|------|
+| `setVolume(instanceId, volume)` | 设置播放实例音量 |
+
+## 数据结构
+
+### PreloadedAudio
+
+存储共享的音频数据，同一个预加载音频可创建多个播放实例。
+
+```cpp
+struct PreloadedAudio {
+    StandardWavInfo data;  // 重采样后的音频数据（44.1kHz, 双声道, 16位）
+};
+```
+
+### PlayInstance
+
+每次 `addAudio` 创建，追踪独立的播放位置。
+
+```cpp
+struct PlayInstance {
+    const PreloadedAudio* source;  // 指向共享的预加载音频数据
+    size_t position;              // 当前播放位置（样本索引）
+    float volume;                // 音量（0.0-1.0）
+    bool active;                 // 是否激活播放
+};
+```
+
+### StandardWavInfo
+
+标准音频格式：`std::vector<int16_t>` - 44.1kHz, 双声道, 16位 PCM
+
+## 核心实现
+
+### 音频格式
+
+| 参数 | 值 |
+|------|-----|
+| 采样率 | 44.1kHz |
+| 声道数 | 双声道 |
+| 位深度 | 16位 |
+| 缓冲区大小 | 8820 样本（100ms） |
+
+### 双缓冲技术
+
+使用两个音频缓冲区交替播放，避免音频断续：
+
+1. `playAll()` 或首次 `addAudio` 时预先准备2个缓冲区
+2. `waveOutCallback` 在缓冲区播放完成后准备下一个缓冲区
+3. 保证音频设备始终有数据可播放
+
+### 异步加载
+
+`preloadAudio` 使用后台线程异步加载，不阻塞音频播放：
+
+1. 主线程预留位置并返回 ID
+2. 后台线程加载 WAV 文件并重采样
+3. 通过 `std::atomic<bool>` 标记加载完成状态
+4. `addAudio(preloadedId)` 检查数据就绪后创建播放实例
+
+### 线程安全
+
+- 使用 `std::mutex` 保护共享数据
+- `std::atomic<bool>` 用于跨线程状态同步
+- 所有公开接口都是线程安全的
+
+## 使用示例
+
+### 简化用法（快速播放）
+
+```cpp
+AudioPool& pool = AudioPool::getInstance();
+pool.addAudio(L"test.wav");  // 异步加载，立即返回
+pool.addAudio(L"test2.wav");  // 混合播放
+```
+
+### 标准用法（预加载 + 控制）
+
+```cpp
+AudioPool& pool = AudioPool::getInstance();
+std::atomic<bool> ready(false);
+
+// 预加载
+size_t id1 = pool.preloadAudio(L"test.wav", ready);
+while (!ready.load()) Sleep(10);
+
+// 添加播放
+size_t instanceId = pool.addAudio(id1);
+pool.setVolume(instanceId, 0.5f);
+
+// 停止
+pool.stopAll();
+```
+
+## 注意事项
+
+1. **路径问题**：使用相对路径时注意工作目录，测试程序从 `test/compiled/` 运行
+2. **音频播放完毕**：播放实例不会自动清理，需手动 `stopAll()`
+3. **设备状态**：`stopAll()` 不会关闭音频设备，只是静音并重置位置
+4. **内存管理**：音频数据由库管理，调用者无需释放
+
+## 测试文件
+
+| 文件 | 说明 |
+|------|------|
+| `test/3_audio_pool_test.cpp` | addAudio 字符串版本测试 |
+| `test/4_audio_mix_test.cpp` | 预加载 + 延迟添加测试 |
+| `test/5_simple_test.cpp` | 单音频播放测试 |
+
+## 文件结构
+
+```
+audio-player/
+├── src/
+│   ├── audioPlayer.hpp    # 头文件
+│   ├── audioPlayer.cpp    # 实现
+│   └── libsamplerate/    # 重采样库
+├── test/
+│   ├── audio/             # 测试音频文件
+│   ├── compiled/          # 编译输出目录
+│   └── *.cpp              # 测试源文件
+└── agent.md               # 本文档
+```
+## AI开发须知
+
+每次修改完库源码，编译对应的测试文件到compile路径下，以便用户检测，本要求在库提供一个建议的测试文件编译方案前永久生效
+
