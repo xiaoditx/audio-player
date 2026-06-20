@@ -42,8 +42,8 @@ namespace
             throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"仅支持 PCM 格式");
         if (wf.nChannels != 1 && wf.nChannels != 2)
             throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"仅支持单声道或立体声");
-        if (wf.wBitsPerSample != 8 && wf.wBitsPerSample != 16 && wf.wBitsPerSample != 32)
-            throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"仅支持 8/16/32 位深度");
+        if (wf.wBitsPerSample != 8 && wf.wBitsPerSample != 16 && wf.wBitsPerSample != 24 && wf.wBitsPerSample != 32)
+            throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"仅支持 8/16/24/32 位深度");
         if (wf.nSamplesPerSec < 8000 || wf.nSamplesPerSec > 192000)
             throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"采样率超出合理范围");
     }
@@ -141,9 +141,6 @@ namespace yumo
         if (!hWaveOut_) {
             lock.unlock();
             ensureDeviceOpen();
-        } else {
-            // 取消静音
-            isMuted_ = false;
         }
 
         return instanceId;
@@ -213,8 +210,23 @@ namespace yumo
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        // 如果静音，输出静默
+        // 如果停止（挂起），输出静默但不推进position
+        if (isStopped_) {
+            memset(output, 0, chunkSize * sizeof(int16_t));
+            return;
+        }
+
+        // 如果静音，跳过mix处理但继续推进position（性能优化）
         if (isMuted_) {
+            // 推进所有激活播放实例的位置
+            for (auto& inst : playInstances_) {
+                if (!inst.active || !inst.source || inst.position >= inst.source->data.size())
+                    continue;
+                size_t remaining = inst.source->data.size() - inst.position;
+                size_t samplesToAdvance = std::min(chunkSize, remaining);
+                inst.position += samplesToAdvance;
+            }
+            // 输出静默
             memset(output, 0, chunkSize * sizeof(int16_t));
             return;
         }
@@ -314,9 +326,12 @@ namespace yumo
         if (playInstances_.empty())
             return;
 
-        // 重置所有播放位置
+        // 只重置还在播放的实例的位置（position < data.size()）
+        // 已播放完毕的实例不重置，让它们保持结束状态
         for (auto& inst : playInstances_) {
-            inst.position = 0;
+            if (inst.active && inst.source && inst.position < inst.source->data.size()) {
+                inst.position = 0;
+            }
         }
 
         // 设置播放格式：44.1kHz, 双声道, 16位
@@ -361,19 +376,28 @@ namespace yumo
         }
     }
 
-    // 停止所有播放（静音）
+    // 停止所有播放（挂起）
     void AudioPool::stopAll()
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // 重置所有播放实例的位置
-        for (auto& inst : playInstances_) {
-            inst.position = 0;
-            inst.active = false;
-        }
-        
-        // 设置静音标志
-        isMuted_ = true;
+        // 设置停止标志，挂起播放
+        isStopped_ = true;
+    }
+
+    // 恢复播放
+    void AudioPool::resume()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        isStopped_ = false;
+        isMuted_ = false;
+    }
+
+    // 设置静音状态
+    void AudioPool::setMuted(bool muted)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        isMuted_ = muted;
     }
 
     // 重置所有播放实例的位置到开头
@@ -518,10 +542,13 @@ namespace yumo
             }
             else
             {
-                // todo GetLastError() != NO_ERROR
                 // 忽略其他块（如list、fact等），直接跳过
+                // 检查 SetFilePointer 返回值以确保跳过成功
                 if (SetFilePointer(fileHandler.get(), chunkSize, NULL, FILE_CURRENT) == INVALID_SET_FILE_POINTER)
                 {
+                    DWORD error = GetLastError();
+                    // todo 利用这个错误码生成错误信息
+                    (void)error; // error 可用于日志记录
                     throw yumo::exception_ex(
                         yumo::exception::type::FileReadError,
                         L"WAV文件读取失败，可能是文件损坏或其他错误");
@@ -529,54 +556,6 @@ namespace yumo
             }
         }
         out->valid = true; // 标记结构体有效
-    }
-
-    // 使用 waveOut API 播放标准格式音频
-    void playStandard(const StandardWavInfo &audioData)
-    {
-        // 标准格式：44.1kHz, 双声道, 16位
-        WAVEFORMATEX wf = {};
-        wf.wFormatTag = WAVE_FORMAT_PCM;
-        wf.nChannels = 2;
-        wf.nSamplesPerSec = 44100;
-        wf.wBitsPerSample = 16;
-        wf.nBlockAlign = wf.nChannels * wf.wBitsPerSample / 8;
-        wf.nAvgBytesPerSec = wf.nSamplesPerSec * wf.nBlockAlign;
-
-        HWAVEOUT hWaveOut = NULL;
-        MMRESULT mmResult = waveOutOpen(&hWaveOut, WAVE_MAPPER, &wf, 0, 0, CALLBACK_NULL);
-        if (mmResult != MMSYSERR_NOERROR)
-        {
-            throw yumo::exception_ex(yumo::exception::type::UnknownError, L"波形音频设备打开失败");
-        }
-
-        auto closeWaveOut = [](HWAVEOUT h) { waveOutClose(h); };
-        std::unique_ptr<std::remove_pointer_t<HWAVEOUT>, decltype(closeWaveOut)> 
-            waveOutGuard(hWaveOut, closeWaveOut);
-
-        WAVEHDR header = {};
-        header.lpData = reinterpret_cast<LPSTR>(const_cast<int16_t*>(audioData.data()));
-        header.dwBufferLength = static_cast<DWORD>(audioData.size() * sizeof(int16_t));
-
-        mmResult = waveOutPrepareHeader(hWaveOut, &header, sizeof(WAVEHDR));
-        if (mmResult != MMSYSERR_NOERROR)
-        {
-            throw yumo::exception_ex(yumo::exception::type::UnknownError, L"音频头准备失败");
-        }
-
-        std::unique_ptr<WAVEHDR, std::function<void(WAVEHDR*)>> 
-            headerGuard(&header, [hWaveOut](WAVEHDR* hdr) { waveOutUnprepareHeader(hWaveOut, hdr, sizeof(WAVEHDR)); });
-
-        mmResult = waveOutWrite(hWaveOut, &header, sizeof(WAVEHDR));
-        if (mmResult != MMSYSERR_NOERROR)
-        {
-            throw yumo::exception_ex(yumo::exception::type::UnknownError, L"音频播放失败");
-        }
-
-        while (!(header.dwFlags & WHDR_DONE))
-        {
-            Sleep(10);
-        }
     }
 
     // 使用 libsamplerate 进行音频转换
