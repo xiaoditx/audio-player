@@ -29,10 +29,12 @@ void testAudioFile(const wchar_t* filename)
         // 添加到播放队列
         std::wcout << L"\n按 Enter 键播放音频...";
         std::wcin.get();
-        
+
+        pool.resume();  // 重置停止状态，确保新音频能正常播放
+     
         size_t instanceId = pool.addAudio(preloadedId);
         pool.setMuted(false); // 取消静音开始播放
-        
+   
         std::wcout << L"正在播放... 播放实例ID: " << instanceId << std::endl;
         
         // 等待播放完成

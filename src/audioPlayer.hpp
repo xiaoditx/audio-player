@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <mmreg.h>
+#include <msacm.h>
 #include <stdio.h>
 #include <memory>
 #include <vector>
@@ -7,9 +8,6 @@
 #include <algorithm>
 #include <map>
 #include <mutex>
-
-// libsamplerate 库
-#include "libsamplerate/include/samplerate.h"
 
 namespace yumo
 {
@@ -53,7 +51,7 @@ namespace yumo
      * 多个实例可以引用同一个预加载音频，实现同一音频的重复播放
      */
     struct PlayInstance {
-        const PreloadedAudio* source;  // 指向共享的预加载音频数据
+        PreloadedAudio* source;  // 指向共享的预加载音频数据
         size_t position;              // 当前播放位置（样本索引）
         float volume;                // 音量（0.0-1.0）
         bool active;                 // 是否激活播放
@@ -169,7 +167,7 @@ namespace yumo
         AudioPool() = default;
         ~AudioPool() = default;
 
-        std::vector<PreloadedAudio> preloadedAudios_;   // 预加载的音频数据（共享数据源）
+        std::vector<std::unique_ptr<PreloadedAudio>> preloadedAudios_;   // 预加载的音频数据（共享数据源）
         std::vector<PlayInstance> playInstances_;      // 当前播放的实例（独立位置追踪）
         mutable std::mutex mutex_;                     // 线程安全锁
         bool isPlaying_ = false;                        // 是否正在播放
