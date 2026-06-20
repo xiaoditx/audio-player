@@ -4,6 +4,7 @@
 
 #include "audioPlayer.hpp"
 #include "yumo_except.hpp"
+#include <iostream>
 #include <cassert>
 #include <functional>
 #include <thread>
@@ -81,7 +82,7 @@ namespace yumo
         size_t preloadedId;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            preloadedAudios_.push_back(PreloadedAudio());  // 预留空位置
+            preloadedAudios_.push_back(std::make_unique<PreloadedAudio>());  // 预留空位置
             preloadedId = preloadedAudios_.size() - 1;
         }
 
@@ -96,10 +97,10 @@ namespace yumo
                 StandardWavInfo standardData = convertToStandard(wavInfo);
 
                 // 填充预留的位置
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    preloadedAudios_[preloadedId].data = std::move(standardData);
-                }
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                preloadedAudios_[preloadedId]->data = std::move(standardData);
+            }
 
                 // 标记加载完成（atomic 确保线程同步）
                 ready = true;
@@ -124,12 +125,12 @@ namespace yumo
             throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"无效的预加载音频ID");
 
         // 检查数据是否已加载
-        if (preloadedAudios_[preloadedId].data.empty())
+        if (preloadedAudios_[preloadedId]->data.empty())
             throw yumo::exception_ex(yumo::exception::type::InvalidInput, L"预加载音频数据为空");
 
         // 创建播放实例
         PlayInstance instance;
-        instance.source = &preloadedAudios_[preloadedId];
+        instance.source = preloadedAudios_[preloadedId].get();
         instance.position = 0;
         instance.volume = 1.0f;
         instance.active = true;
@@ -163,7 +164,7 @@ namespace yumo
             // 加载完成后检查数据是否有效
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                if (preloadedId >= preloadedAudios_.size() || preloadedAudios_[preloadedId].data.empty()) {
+                if (preloadedId >= preloadedAudios_.size() || preloadedAudios_[preloadedId]->data.empty()) {
                     // 加载失败
                     return;
                 }
