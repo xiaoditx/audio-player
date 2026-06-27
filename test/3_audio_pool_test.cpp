@@ -36,20 +36,10 @@ int main()
             // 立即返回，加载和播放都在后台完成
             size_t preloadedId = pool.addAudio(files[i]);  
             std::wcout << L"  -> 预加载ID: " << preloadedId << L" (立即返回，后台加载播放)" << std::endl;
-            std::wcout << L"  -> 当前预加载数: " << pool.getPreloadedCount() << std::endl;
         }
         
         std::wcout << L"\n所有音频已提交加载！" << std::endl;
         std::wcout << L"预加载音频数: " << pool.getPreloadedCount() << std::endl;
-        
-        // 等待所有音频加载并开始播放
-        std::wcout << L"\n等待音频开始播放...(5秒)" << std::endl;
-        for (int i = 0; i < 5; ++i) {
-            Sleep(1000);
-            std::wcout << L"  已等待 " << (i+1) << L" 秒，播放实例数: " << pool.getPlayingCount() << std::endl;
-        }
-        
-        std::wcout << L"\n播放实例数: " << pool.getPlayingCount() << std::endl;
         
         // 等待用户输入停止
         std::wcout << L"\n按 Enter 键停止" << std::endl;

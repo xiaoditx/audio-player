@@ -33,7 +33,7 @@ int main()
         
         for (size_t i = 0; i < 3; ++i) {
             std::wcout << L"  预加载: " << files[i] << L" (后台加载)" << std::endl;
-            preloadedIds[i] = pool.preloadAudio(files[i], readyFlags[i]);
+            preloadedIds[i] = pool.preloadAudio(files[i], &readyFlags[i]);
             std::wcout << L"  -> 预加载ID: " << preloadedIds[i] << std::endl;
         }
         

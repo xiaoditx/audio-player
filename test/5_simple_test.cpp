@@ -28,7 +28,7 @@ int main()
         std::wcout << L"\n添加音频: " << filename << std::endl;
         
         std::atomic<bool> ready(false);
-        size_t preloadedId = pool.preloadAudio(filename, ready);
+        size_t preloadedId = pool.preloadAudio(filename, &ready);
         std::wcout << L"预加载ID: " << preloadedId << std::endl;
         
         // 等待加载完成

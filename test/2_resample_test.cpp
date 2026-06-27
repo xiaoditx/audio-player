@@ -18,7 +18,7 @@ void testAudioFile(const wchar_t* filename)
         // 预加载音频
         std::wcout << L"正在预加载音频..." << std::endl;
         std::atomic<bool> ready(false);
-        size_t preloadedId = pool.preloadAudio(filename, ready);
+        size_t preloadedId = pool.preloadAudio(filename, &ready);
         
         // 等待加载完成
         while (!ready.load()) {

@@ -35,9 +35,9 @@ int main()
         // 预加载三段音频
         std::wcout << L"\n=== 预加载音频 ===" << std::endl;
         std::atomic<bool> ready1(false), ready2(false), ready3(false);
-        size_t id1 = pool.preloadAudio(files[0], ready1);
-        size_t id2 = pool.preloadAudio(files[1], ready2);
-        size_t id3 = pool.preloadAudio(files[2], ready3);
+        size_t id1 = pool.preloadAudio(files[0], &ready1);
+        size_t id2 = pool.preloadAudio(files[1], &ready2);
+        size_t id3 = pool.preloadAudio(files[2], &ready3);
         
         std::wcout << L"预加载ID: " << id1 << L", " << id2 << L", " << id3 << std::endl;
         
