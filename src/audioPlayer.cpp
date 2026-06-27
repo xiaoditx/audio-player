@@ -61,6 +61,10 @@ namespace
 
 namespace yumo
 {
+    // 前向声明（内部使用的辅助函数）
+    StandardWavInfo convertToStandard(const WavInfo &wavInfo);
+    void loadWav(const wchar_t *filename, WavInfo *out);
+
     // 音频缓冲区大小（约100ms的音频）
     // 计算：采样率 * 声道数 * 时长(秒) = 44100 * 2 * 0.1 = 8820 个样本
     const size_t AUDIO_CHUNK_SIZE = static_cast<size_t>(44100 * 2 * 0.1);
@@ -73,51 +77,48 @@ namespace yumo
     }
 
     // 预加载音频文件（异步）
-    size_t AudioPool::preloadAudio(const wchar_t* filename, std::atomic<bool>& ready)
+    size_t AudioPool::preloadAudio(const wchar_t* filename, std::atomic<bool>* ready)
     {
-        // 标记加载状态为未完成
-        ready = false;
+        auto readyPtr = ready
+            ? std::shared_ptr<std::atomic<bool>>(ready, [](std::atomic<bool>*){})
+            : std::make_shared<std::atomic<bool>>(false);
 
-        // 预留一个位置，获取 ID
+        if (ready) {
+            *ready = false;
+        }
+
         size_t preloadedId;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            preloadedAudios_.push_back(std::make_unique<PreloadedAudio>());  // 预留空位置
+            preloadedAudios_.push_back(std::make_unique<PreloadedAudio>());
             preloadedId = preloadedAudios_.size() - 1;
         }
 
-        // 创建后台加载线程
-        std::thread loadThread([this, filename, preloadedId, &ready]() {
+        std::thread loadThread([this, filename, preloadedId, readyPtr]() {
             try {
-                // 加载WAV文件（不持有锁，避免阻塞播放）
                 WavInfo wavInfo;
                 loadWav(filename, &wavInfo);
 
-                // 重采样到标准格式
                 StandardWavInfo standardData = convertToStandard(wavInfo);
 
-                // 填充预留的位置
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                preloadedAudios_[preloadedId]->data = std::move(standardData);
-            }
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    preloadedAudios_[preloadedId]->data = std::move(standardData);
+                }
 
-                // 标记加载完成（atomic 确保线程同步）
-                ready = true;
+                *readyPtr = true;
             } catch (...) {
-                // 加载失败，标记完成（但数据为空）
-                ready = true;
+                *readyPtr = true;
             }
         });
 
-        // 分离线程，让它在后台运行
         loadThread.detach();
 
         return preloadedId;
     }
 
     // 添加预加载音频并立即播放
-    size_t AudioPool::addAudio(size_t preloadedId)
+    size_t AudioPool::addAudio(size_t preloadedId, float volume)
     {
         std::unique_lock<std::mutex> lock(mutex_);
 
@@ -132,7 +133,7 @@ namespace yumo
         PlayInstance instance;
         instance.source = preloadedAudios_[preloadedId].get();
         instance.position = 0;
-        instance.volume = 1.0f;
+        instance.volume = volume;
         instance.active = true;
 
         playInstances_.push_back(instance);
@@ -148,37 +149,36 @@ namespace yumo
     }
 
     // 添加音频文件并立即播放（简化用法）
-    size_t AudioPool::addAudio(const wchar_t* filename)
+    size_t AudioPool::addAudio(const wchar_t* filename, float volume, std::atomic<bool>* ready)
     {
-        // 使用智能指针确保 ready 的生命周期覆盖后台线程
-        auto ready = std::make_shared<std::atomic<bool>>(false);
-        size_t preloadedId = preloadAudio(filename, *ready);
-        
-        // 在后台线程等待加载完成并播放
-        std::thread([this, preloadedId, ready]() {
-            // 等待加载完成
-            while (!ready->load()) {
+        auto readyPtr = ready
+            ? std::shared_ptr<std::atomic<bool>>(ready, [](std::atomic<bool>*){})
+            : std::make_shared<std::atomic<bool>>(false);
+
+        if (ready) {
+            *ready = false;
+        }
+
+        size_t preloadedId = preloadAudio(filename, readyPtr.get());
+
+        std::thread([this, preloadedId, readyPtr, volume]() {
+            while (!readyPtr->load()) {
                 Sleep(10);
             }
-            
-            // 加载完成后检查数据是否有效
+
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (preloadedId >= preloadedAudios_.size() || preloadedAudios_[preloadedId]->data.empty()) {
-                    // 加载失败
                     return;
                 }
             }
-            
-            // 添加播放
+
             try {
-                addAudio(preloadedId);
+                addAudio(preloadedId, volume);
             } catch (...) {
-                // 忽略播放失败
             }
         }).detach();
-        
-        // 返回预加载ID作为标识（用户可用于后续控制）
+
         return preloadedId;
     }
 
@@ -357,6 +357,11 @@ namespace yumo
         }
 
         lock.lock();
+        if (hWaveOut_) {
+            waveOutClose(hWaveOut);
+            lock.unlock();
+            return;
+        }
         hWaveOut_ = hWaveOut;
         isPlaying_ = true;
         isMuted_ = false;

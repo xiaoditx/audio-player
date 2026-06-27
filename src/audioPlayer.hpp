@@ -78,10 +78,10 @@ namespace yumo
          * 加载在后台线程进行，不阻塞播放
          * 
          * @param filename WAV文件路径
-         * @param ready 加载状态标记（调用时设为false，加载完成后变为true，使用atomic确保线程同步）
+         * @param ready 可选的加载状态标记（调用时设为false，加载完成后变为true）
          * @return 预加载音频ID（用于后续 addAudio）
          */
-        size_t preloadAudio(const wchar_t* filename, std::atomic<bool>& ready);
+        size_t preloadAudio(const wchar_t* filename, std::atomic<bool>* ready = nullptr);
 
         /**
          * @brief 添加预加载音频到播放池并立即播放
@@ -89,9 +89,10 @@ namespace yumo
          * 创建一个新的播放实例，与当前播放的音频混合
          * 
          * @param preloadedId preloadAudio 返回的预加载音频ID
+         * @param volume 音量（0.0-1.0），默认为 1.0
          * @return 播放实例ID
          */
-        size_t addAudio(size_t preloadedId);
+        size_t addAudio(size_t preloadedId, float volume = 1.0f);
 
         /**
          * @brief 添加音频文件到播放池并立即播放
@@ -100,9 +101,11 @@ namespace yumo
          * 会等待加载完成后再添加播放
          * 
          * @param filename WAV文件路径
-         * @return 播放实例ID
+         * @param volume 音量（0.0-1.0），默认为 1.0
+         * @param ready 可选的加载状态标记（用户提供，用于检查加载完成）
+         * @return 预加载音频ID
          */
-        size_t addAudio(const wchar_t* filename);
+        size_t addAudio(const wchar_t* filename, float volume = 1.0f, std::atomic<bool>* ready = nullptr);
 
         /**
          * @brief 获取预加载音频数量
@@ -187,24 +190,4 @@ namespace yumo
         // 准备音频设备
         void ensureDeviceOpen();
     };
-
-    /**
-     * @brief 将WAV文件信息转换为标准格式
-     *
-     * @param[in] wavInfo 包含WAV文件格式信息和音频数据的结构体
-     * @return StandardWavInfo 标准格式的WAV文件信息，包含16位整数音频数据
-     *
-     */
-    StandardWavInfo convertToStandard(const WavInfo &wavInfo);
-
-    /**
-     * @brief 从磁盘加载WAV文件，解析其格式块和数据块，填充WavInfo结构体
-     *
-     * @param[in] filename WAV文件的路径（宽字符字符串）
-     * @param[out] out 指向WavInfo结构体的指针，用于存储解析后的文件信息
-     * @return 无返回值，如果发生错误，将抛出异常
-     *
-     * @note 读取中发生任何异常，函数都将抛出异常，且out结构体的内容不保证有效。
-     */
-    void loadWav(const wchar_t *filename, WavInfo *out);
 }
