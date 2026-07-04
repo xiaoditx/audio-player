@@ -12,13 +12,10 @@ void testAudioFile(const wchar_t* filename)
     {
         std::wcout << L"\n=== 测试文件: " << filename << L" ===" << std::endl;
         
-        // 获取音频池单例
-        yumo::AudioPool& pool = yumo::AudioPool::getInstance();
-        
         // 预加载音频
         std::wcout << L"正在预加载音频..." << std::endl;
         std::atomic<bool> ready(false);
-        size_t preloadedId = pool.preloadAudio(filename, &ready);
+        size_t preloadedId = yumo::preloadAudio(filename, &ready);
         
         // 等待加载完成
         while (!ready.load()) {
@@ -30,10 +27,10 @@ void testAudioFile(const wchar_t* filename)
         std::wcout << L"\n按 Enter 键播放音频...";
         std::wcin.get();
 
-        pool.resume();  // 重置停止状态，确保新音频能正常播放
+        yumo::global.stop = false;  // 重置停止状态，确保新音频能正常播放
      
-        size_t instanceId = pool.addAudio(preloadedId);
-        pool.setGlobalMute(false); // 取消静音开始播放
+        size_t instanceId = yumo::addAudio(preloadedId);
+        yumo::global.mute = false; // 取消静音开始播放
    
         std::wcout << L"正在播放... 播放实例ID: " << instanceId << std::endl;
         
@@ -41,7 +38,7 @@ void testAudioFile(const wchar_t* filename)
         std::wcout << L"按 Enter 键停止...";
         std::wcin.get();
         
-        pool.stopAll();
+        yumo::global.stop = true;
         std::wcout << L"播放已停止！" << std::endl;
         
     }

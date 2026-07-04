@@ -270,7 +270,7 @@ namespace yumo
         std::lock_guard<std::mutex> lock(mutex_);
 
         // 如果停止（挂起），输出静默但不推进position
-        if (isStopped_) {
+        if (global.stop.load()) {
             memset(output, 0, chunkSize * sizeof(int16_t));
             return;
         }
@@ -289,7 +289,7 @@ namespace yumo
             }
 
             // 如果全局静音或实例静音，跳过混音但继续推进position
-            if (isMuted_ || inst.second.muted) {
+            if (global.mute.load() || inst.second.muted) {
                 size_t remaining = inst.second.source->data.size() - inst.second.position;
                 size_t samplesToAdvance = std::min(chunkSize, remaining);
                 inst.second.position += samplesToAdvance;
@@ -301,9 +301,9 @@ namespace yumo
             size_t samplesToCopy = std::min(chunkSize, remaining);
 
             for (size_t i = 0; i < samplesToCopy; ++i) {
-                // 应用音量并混合
+                // 应用全局音量和实例音量并混合
                 int32_t mixed = static_cast<int32_t>(output[i]) +
-                    static_cast<int32_t>(data[inst.second.position + i] * inst.second.volume);
+                    static_cast<int32_t>(data[inst.second.position + i] * inst.second.volume * global.volume.load());
 
                 // 防止溢出
                 if (mixed > INT16_MAX) mixed = INT16_MAX;
@@ -436,7 +436,6 @@ namespace yumo
         }
         hWaveOut_ = hWaveOut;
         isPlaying_ = true;
-        isMuted_ = false;
         lock.unlock();
 
         // 预先准备多个缓冲区（双缓冲）
@@ -457,24 +456,19 @@ namespace yumo
     // 停止所有播放（挂起）
     void AudioPool::stopAll()
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        // 设置停止标志，挂起播放
-        isStopped_ = true;
+        global.stop.store(true);
     }
 
     // 恢复播放
     void AudioPool::resume()
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        isStopped_ = false;
+        global.stop.store(false);
     }
 
     // 设置全局静音状态
     void AudioPool::setGlobalMute(bool muted)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        isMuted_ = muted;
+        global.mute.store(muted);
     }
 
     // 重置所有播放实例的位置到开头

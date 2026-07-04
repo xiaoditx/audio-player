@@ -20,15 +20,12 @@ int main()
     std::wcout << L"当前工作目录: " << cwd << std::endl;
     
     try {
-        // 获取音频池单例
-        yumo::AudioPool& pool = yumo::AudioPool::getInstance();
-        
         // 使用相对路径测试
         const wchar_t* filename = L"..\\audio\\test.wav";
         std::wcout << L"\n添加音频: " << filename << std::endl;
         
         std::atomic<bool> ready(false);
-        size_t preloadedId = pool.preloadAudio(filename, &ready);
+        size_t preloadedId = yumo::preloadAudio(filename, &ready);
         std::wcout << L"预加载ID: " << preloadedId << std::endl;
         
         // 等待加载完成
@@ -40,15 +37,15 @@ int main()
         
         // 添加播放
         std::wcout << L"添加播放..." << std::endl;
-        size_t instanceId = pool.addAudio(preloadedId);
+        size_t instanceId = yumo::addAudio(preloadedId);
         std::wcout << L"播放实例ID: " << instanceId << std::endl;
-        std::wcout << L"播放实例数: " << pool.getPlayingCount() << std::endl;
+        std::wcout << L"播放实例数: " << yumo::getPlayingCount() << std::endl;
         
         // 等待播放
         std::wcout << L"\n播放中...按 Enter 键停止" << std::endl;
         std::wcin.get();
         
-        pool.stopAll();
+        yumo::global.stop = true;
         std::wcout << L"已停止播放" << std::endl;
         
     } catch (const yumo::exception_ex& e) {

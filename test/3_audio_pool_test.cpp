@@ -20,9 +20,6 @@ int main()
     std::wcout << L"当前工作目录: " << cwd << std::endl;
     
     try {
-        // 获取音频池单例
-        yumo::AudioPool& pool = yumo::AudioPool::getInstance();
-        
         // 使用绝对路径测试
         const wchar_t* files[] = {
             L"..\\audio\\test.wav",
@@ -37,7 +34,7 @@ int main()
         for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); ++i) {
             std::wcout << L"\n添加音频: " << files[i] << std::endl;
             // 便利接口，异步加载并播放，播放完成后自动清理预加载对象
-            pool.addAudio(files[i], 1.0f, &instanceIds[i], &readyFlags[i]);
+            yumo::addAudio(files[i], 1.0f, &instanceIds[i], &readyFlags[i]);
             std::wcout << L"  -> 后台加载播放，instanceId 将在播放开始后写入" << std::endl;
         }
 
@@ -50,13 +47,13 @@ int main()
         }
         
         std::wcout << L"\n所有音频已提交加载！" << std::endl;
-        std::wcout << L"预加载音频数: " << pool.getPreloadedCount() << std::endl;
+        std::wcout << L"预加载音频数: " << yumo::getPreloadedCount() << std::endl;
         
         // 等待用户输入停止
         std::wcout << L"\n按 Enter 键停止" << std::endl;
         std::wcin.get();
         
-        pool.stopAll();
+        yumo::global.stop = true;
         std::wcout << L"已停止所有播放" << std::endl;
         
     } catch (const yumo::exception_ex& e) {
