@@ -17,6 +17,9 @@ struct AudioStatus {
 
 void printStatus(AudioStatus audios[], size_t count) {
     std::wcout << L"\n当前音频状态:" << std::endl;
+    std::wcout << L"  全局状态: 音量" << yumo::global.volume.load() 
+               << L"  " << (yumo::global.mute.load() ? L"全局静音" : L"全局非静音")
+               << L"  " << (yumo::global.stop.load() ? L"全局停止" : L"全局运行") << std::endl;
     for (size_t i = 0; i < count; ++i) {
         std::wcout << L"  " << (i + 1) << L"：";
         if (audios[i].isPlaying) {
@@ -40,7 +43,9 @@ void printMenu() {
     std::wcout << L"  5. 静音/取消静音" << std::endl;
     std::wcout << L"  6. 停止所有播放" << std::endl;
     std::wcout << L"  7. 恢复全部播放" << std::endl;
-    std::wcout << L"  8. 退出" << std::endl;
+    std::wcout << L"  8. 设置全局音量" << std::endl;
+    std::wcout << L"  9. 全局静音/取消静音" << std::endl;
+    std::wcout << L"  10. 退出" << std::endl;
     std::wcout << L"请输入选择: ";
 }
 
@@ -201,6 +206,20 @@ int main() {
                     break;
                 }
                 case 8: {
+                    float vol;
+                    std::wcout << L"请输入全局音量(0.0-1.0): ";
+                    std::wcin >> vol;
+                    yumo::global.volume = vol;
+                    std::wcout << L"全局音量已设置为 " << vol << std::endl;
+                    break;
+                }
+                case 9: {
+                    bool newMuted = !yumo::global.mute.load();
+                    yumo::global.mute = newMuted;
+                    std::wcout << (newMuted ? L"已全局静音" : L"已取消全局静音") << std::endl;
+                    break;
+                }
+                case 10: {
                     std::wcout << L"退出程序" << std::endl;
                     break;
                 }
@@ -209,7 +228,7 @@ int main() {
                     break;
                 }
             }
-        } while (choice != 8);
+        } while (choice != 10);
 
     } catch (const yumo::exception_ex& e) {
         std::wcerr << L"错误: " << e.what() << std::endl;

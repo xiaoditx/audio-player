@@ -301,9 +301,9 @@ namespace yumo
             size_t samplesToCopy = std::min(chunkSize, remaining);
 
             for (size_t i = 0; i < samplesToCopy; ++i) {
-                // 应用音量并混合
+                // 应用全局音量和实例音量并混合
                 int32_t mixed = static_cast<int32_t>(output[i]) +
-                    static_cast<int32_t>(data[inst.second.position + i] * inst.second.volume);
+                    static_cast<int32_t>(data[inst.second.position + i] * inst.second.volume * global.volume.load());
 
                 // 防止溢出
                 if (mixed > INT16_MAX) mixed = INT16_MAX;
