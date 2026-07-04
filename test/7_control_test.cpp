@@ -49,6 +49,28 @@ void printMenu() {
     std::wcout << L"请输入选择: ";
 }
 
+bool readInt(int& out, const wchar_t* prompt) {
+    std::wcout << prompt;
+    if (!(std::wcin >> out)) {
+        std::wcin.clear();
+        std::wcin.ignore(1024, L'\n');
+        std::wcout << L"输入无效，请输入整数" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool readFloat(float& out, const wchar_t* prompt) {
+    std::wcout << prompt;
+    if (!(std::wcin >> out)) {
+        std::wcin.clear();
+        std::wcin.ignore(1024, L'\n');
+        std::wcout << L"输入无效，请输入数字" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 int main() {
 #ifdef _WIN32
     _setmode(_fileno(stdout), _O_U16TEXT);
@@ -89,13 +111,16 @@ int main() {
         do {
             printStatus(audios, 3);
             printMenu();
-            std::wcin >> choice;
+            if (!readInt(choice, L"")) {
+                continue;
+            }
 
             switch (choice) {
                 case 1: {
                     int idx;
-                    std::wcout << L"请输入音频编号(1-3): ";
-                    std::wcin >> idx;
+                    if (!readInt(idx, L"请输入音频编号(1-3): ")) {
+                        break;
+                    }
                     if (idx < 1 || idx > 3) {
                         std::wcout << L"无效编号" << std::endl;
                         break;
@@ -111,9 +136,9 @@ int main() {
                 }
                 case 2: {
                     int idx;
-                    float vol;
-                    std::wcout << L"请输入音频编号(1-3): ";
-                    std::wcin >> idx;
+                    if (!readInt(idx, L"请输入音频编号(1-3): ")) {
+                        break;
+                    }
                     if (idx < 1 || idx > 3) {
                         std::wcout << L"无效编号" << std::endl;
                         break;
@@ -122,8 +147,14 @@ int main() {
                         std::wcout << L"该音频未播放" << std::endl;
                         break;
                     }
-                    std::wcout << L"请输入音量(0.0-1.0): ";
-                    std::wcin >> vol;
+                    float vol;
+                    if (!readFloat(vol, L"请输入音量(0.0-1.0): ")) {
+                        break;
+                    }
+                    if (vol < 0.0f || vol > 1.0f) {
+                        std::wcout << L"音量必须在 0.0-1.0 之间" << std::endl;
+                        break;
+                    }
                     yumo::setVolume(audios[idx - 1].instanceId, vol);
                     audios[idx - 1].volume = vol;
                     std::wcout << L"音量已设置为 " << vol << std::endl;
@@ -131,8 +162,9 @@ int main() {
                 }
                 case 3: {
                     int idx;
-                    std::wcout << L"请输入音频编号(1-3): ";
-                    std::wcin >> idx;
+                    if (!readInt(idx, L"请输入音频编号(1-3): ")) {
+                        break;
+                    }
                     if (idx < 1 || idx > 3) {
                         std::wcout << L"无效编号" << std::endl;
                         break;
@@ -152,8 +184,9 @@ int main() {
                 }
                 case 4: {
                     int idx;
-                    std::wcout << L"请输入音频编号(1-3): ";
-                    std::wcin >> idx;
+                    if (!readInt(idx, L"请输入音频编号(1-3): ")) {
+                        break;
+                    }
                     if (idx < 1 || idx > 3) {
                         std::wcout << L"无效编号" << std::endl;
                         break;
@@ -173,8 +206,9 @@ int main() {
                 }
                 case 5: {
                     int idx;
-                    std::wcout << L"请输入音频编号(1-3): ";
-                    std::wcin >> idx;
+                    if (!readInt(idx, L"请输入音频编号(1-3): ")) {
+                        break;
+                    }
                     if (idx < 1 || idx > 3) {
                         std::wcout << L"无效编号" << std::endl;
                         break;
@@ -207,8 +241,13 @@ int main() {
                 }
                 case 8: {
                     float vol;
-                    std::wcout << L"请输入全局音量(0.0-1.0): ";
-                    std::wcin >> vol;
+                    if (!readFloat(vol, L"请输入全局音量(0.0-1.0): ")) {
+                        break;
+                    }
+                    if (vol < 0.0f || vol > 1.0f) {
+                        std::wcout << L"音量必须在 0.0-1.0 之间" << std::endl;
+                        break;
+                    }
                     yumo::global.volume = vol;
                     std::wcout << L"全局音量已设置为 " << vol << std::endl;
                     break;
