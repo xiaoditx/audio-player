@@ -9,9 +9,25 @@
 #include <map>
 #include <mutex>
 #include <queue>
+#include <atomic>
 
 namespace yumo
 {
+    /**
+     * @brief 音频控制信号类
+     *
+     * 用于控制全局音频状态，支持直接赋值操作
+     * 未来可扩展为每个音频实例配一个
+     */
+    class audioSign {
+    public:
+        std::atomic<bool> mute{false};   // 全局静音
+        std::atomic<bool> stop{false};   // 全局停止（挂起）
+        std::atomic<float> volume{1.0f}; // 全局音量（0.0-1.0）
+    };
+
+    inline audioSign global;
+
     /**
      * @brief WAV文件信息结构体
      *
@@ -219,29 +235,93 @@ namespace yumo
         AudioPool() = default;
         ~AudioPool() = default;
 
-        // 获取新的播放实例ID（使用回收机制）
         size_t allocateInstanceId();
 
-        std::vector<std::unique_ptr<PreloadedAudio>> preloadedAudios_;   // 预加载的音频数据（共享数据源）
-        std::map<size_t, PlayInstance> playInstances_;                  // 当前播放的实例（ID→实例）
-        std::queue<size_t> freeInstanceIds_;                            // 可回收的实例ID队列
-        size_t nextInstanceId_ = 0;                                     // 下一个新ID
-        mutable std::mutex mutex_;                                     // 线程安全锁
-        bool isPlaying_ = false;                                       // 是否正在播放
-        bool isMuted_ = false;                                        // 是否全局静音（继续播放但跳过mix）
-        bool isStopped_ = false;                                      // 是否停止（挂起播放，不处理数据）
-        HWAVEOUT hWaveOut_ = nullptr;                                 // 音频设备句柄
+        std::vector<std::unique_ptr<PreloadedAudio>> preloadedAudios_;
+        std::map<size_t, PlayInstance> playInstances_;
+        std::queue<size_t> freeInstanceIds_;
+        size_t nextInstanceId_ = 0;
+        mutable std::mutex mutex_;
+        bool isPlaying_ = false;
+        HWAVEOUT hWaveOut_ = nullptr;
 
-        // 双缓冲常量
-        static const size_t BUFFER_COUNT = 2;           // 缓冲区数量
+        static const size_t BUFFER_COUNT = 2;
 
-        // 混合音频回调函数
         static void CALLBACK waveOutCallback(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
-        
-        // 混合一小段音频
+
         void mixAudioChunk(int16_t* output, size_t chunkSize);
 
-        // 准备音频设备
         void ensureDeviceOpen();
     };
-}
+
+    // ===== 全局函数包装层 =====
+
+    inline size_t preloadAudio(const wchar_t* filename, std::atomic<bool>* ready = nullptr) {
+        return AudioPool::getInstance().preloadAudio(filename, ready);
+    }
+
+    inline size_t addAudio(size_t preloadedId, float volume = 1.0f) {
+        return AudioPool::getInstance().addAudio(preloadedId, volume);
+    }
+
+    inline void addAudio(const wchar_t* filename, float volume = 1.0f, size_t* instanceId = nullptr, std::atomic<bool>* ready = nullptr) {
+        AudioPool::getInstance().addAudio(filename, volume, instanceId, ready);
+    }
+
+    inline void removePreloadedAudio(size_t preloadedId) {
+        AudioPool::getInstance().removePreloadedAudio(preloadedId);
+    }
+
+    inline size_t getPreloadedCount() {
+        return AudioPool::getInstance().getPreloadedCount();
+    }
+
+    inline size_t getPlayingCount() {
+        return AudioPool::getInstance().getPlayingCount();
+    }
+
+    inline bool isPlaying(size_t instanceId) {
+        return AudioPool::getInstance().isPlaying(instanceId);
+    }
+
+    inline void stopAll() {
+        AudioPool::getInstance().stopAll();
+    }
+
+    inline void resume() {
+        AudioPool::getInstance().resume();
+    }
+
+    inline void setGlobalMute(bool muted) {
+        AudioPool::getInstance().setGlobalMute(muted);
+    }
+
+    inline void resetAll() {
+        AudioPool::getInstance().resetAll();
+    }
+
+    inline void setVolume(size_t instanceId, float volume) {
+        AudioPool::getInstance().setVolume(instanceId, volume);
+    }
+
+    inline float getVolume(size_t instanceId) {
+        return AudioPool::getInstance().getVolume(instanceId);
+    }
+
+    inline bool stop(size_t instanceId) {
+        return AudioPool::getInstance().stop(instanceId);
+    }
+
+    inline bool resume(size_t instanceId) {
+        return AudioPool::getInstance().resume(instanceId);
+    }
+
+    inline bool setMuted(size_t instanceId, bool muted) {
+        return AudioPool::getInstance().setMuted(instanceId, muted);
+    }
+
+    inline bool remove(size_t instanceId) {
+        return AudioPool::getInstance().remove(instanceId);
+    }
+
+} // namespace yumo

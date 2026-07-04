@@ -53,8 +53,6 @@ int main() {
     std::wcout << L"=== Yumo Audio 精细控制测试 ===" << std::endl;
 
     try {
-        yumo::AudioPool& pool = yumo::AudioPool::getInstance();
-
         const wchar_t* files[] = {
             L"..\\audio\\test.wav",
             L"..\\audio\\test2.wav",
@@ -66,7 +64,7 @@ int main() {
 
         std::wcout << L"\n预加载音频..." << std::endl;
         for (size_t i = 0; i < 3; ++i) {
-            audios[i].preloadedId = pool.preloadAudio(files[i], &readyFlags[i]);
+            audios[i].preloadedId = yumo::preloadAudio(files[i], &readyFlags[i]);
             audios[i].isPlaying = false;
             audios[i].volume = 1.0f;
             audios[i].isMuted = false;
@@ -101,7 +99,7 @@ int main() {
                         std::wcout << L"该音频已在播放中" << std::endl;
                         break;
                     }
-                    audios[idx - 1].instanceId = pool.addAudio(audios[idx - 1].preloadedId, audios[idx - 1].volume);
+                    audios[idx - 1].instanceId = yumo::addAudio(audios[idx - 1].preloadedId, audios[idx - 1].volume);
                     audios[idx - 1].isPlaying = true;
                     std::wcout << L"开始播放音频 " << idx << L"，instanceId=" << audios[idx - 1].instanceId << std::endl;
                     break;
@@ -121,7 +119,7 @@ int main() {
                     }
                     std::wcout << L"请输入音量(0.0-1.0): ";
                     std::wcin >> vol;
-                    pool.setVolume(audios[idx - 1].instanceId, vol);
+                    yumo::setVolume(audios[idx - 1].instanceId, vol);
                     audios[idx - 1].volume = vol;
                     std::wcout << L"音量已设置为 " << vol << std::endl;
                     break;
@@ -142,7 +140,7 @@ int main() {
                         std::wcout << L"该音频已暂停" << std::endl;
                         break;
                     }
-                    pool.stop(audios[idx - 1].instanceId);
+                    yumo::stop(audios[idx - 1].instanceId);
                     audios[idx - 1].isPaused = true;
                     std::wcout << L"已暂停音频 " << idx << std::endl;
                     break;
@@ -163,7 +161,7 @@ int main() {
                         std::wcout << L"该音频未暂停" << std::endl;
                         break;
                     }
-                    pool.resume(audios[idx - 1].instanceId);
+                    yumo::resume(audios[idx - 1].instanceId);
                     audios[idx - 1].isPaused = false;
                     std::wcout << L"已恢复音频 " << idx << std::endl;
                     break;
@@ -181,13 +179,13 @@ int main() {
                         break;
                     }
                     bool newMuted = !audios[idx - 1].isMuted;
-                    pool.setMuted(audios[idx - 1].instanceId, newMuted);
+                    yumo::setMuted(audios[idx - 1].instanceId, newMuted);
                     audios[idx - 1].isMuted = newMuted;
                     std::wcout << L"音频 " << idx << (newMuted ? L"已静音" : L"取消静音") << std::endl;
                     break;
                 }
                 case 6: {
-                    pool.stopAll();
+                    yumo::global.stop = true;
                     for (size_t i = 0; i < 3; ++i) {
                         audios[i].isPaused = true;
                     }
@@ -195,7 +193,7 @@ int main() {
                     break;
                 }
                 case 7: {
-                    pool.resume();
+                    yumo::global.stop = false;
                     for (size_t i = 0; i < 3; ++i) {
                         audios[i].isPaused = false;
                     }
